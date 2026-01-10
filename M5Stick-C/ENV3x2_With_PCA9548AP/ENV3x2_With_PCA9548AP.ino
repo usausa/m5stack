@@ -12,7 +12,7 @@ void selectPaHubChannel(uint8_t channel) {
     Wire.beginTransmission(PAHUB_ADDR);
     Wire.write(1 << channel);
     Wire.endTransmission();
-    delay(5);
+    delay(20);
 }
 
 void setup() {
