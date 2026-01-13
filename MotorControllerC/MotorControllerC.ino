@@ -1,11 +1,6 @@
 #include <M5StickC.h>
 #include <ESP32Servo.h>
 
-// ログ出力を完全に無効化
-#undef LOG_LOCAL_LEVEL
-#define LOG_LOCAL_LEVEL ESP_LOG_NONE
-#define CONFIG_LOG_DEFAULT_LEVEL ESP_LOG_NONE
-
 // サーボオブジェクト
 Servo servo1;  // PIN32
 Servo servo2;  // PIN33
@@ -26,6 +21,8 @@ void setup() {
 
   // M5StickC初期化
   M5.begin(true, false, true);  // LCD=true, Serial=false, I2C=true
+  // シリアル通信初期化
+  Serial.begin(115200);
 
   M5.Lcd.setRotation(1);
   M5.Lcd.fillScreen(BLACK);
@@ -33,10 +30,6 @@ void setup() {
   M5.Lcd.setCursor(0, 0);
   M5.Lcd.println("Servo Control");
   
-  // シリアル通信初期化
-  Serial.begin(115200);
-  Serial.setDebugOutput(false);  // デバッグ出力を無効化
-    
   // サーボ初期化
   servo1.attach(SERVO1_PIN);
   servo2.attach(SERVO2_PIN);
