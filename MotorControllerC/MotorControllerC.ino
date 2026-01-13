@@ -20,9 +20,10 @@ void setup() {
   esp_log_level_set("*", ESP_LOG_NONE);
 
   // M5StickC初期化
-  M5.begin(true, false, true);  // LCD=true, Serial=false, I2C=true
+  M5.begin(true, true, false);  // LCD=true, Power=true, Serial=false
   // シリアル通信初期化
   Serial.begin(115200);
+  Serial.setDebugOutput(false);
 
   M5.Lcd.setRotation(1);
   M5.Lcd.fillScreen(BLACK);
