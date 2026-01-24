@@ -6,7 +6,7 @@
 #include <Adafruit_NeoPixel.h>
 
 // ---- ATOM Lite 内蔵RGB LED ----
-#define LED_PIN   27     // ATOM Liteは多くの個体でGPIO27
+#define LED_PIN   27
 #define LED_COUNT 1
 Adafruit_NeoPixel pixels(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
@@ -14,6 +14,8 @@ Adafruit_NeoPixel pixels(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 static BLEUUID NUS_SERVICE_UUID("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");
 static BLEUUID NUS_RX_UUID     ("6E400002-B5A3-F393-E0A9-E50E24DCCA9E"); // Central -> ATOM (Write)
 static BLEUUID NUS_TX_UUID     ("6E400003-B5A3-F393-E0A9-E50E24DCCA9E"); // ATOM -> Central (Notify)
+
+static const char* ADV_NAME = "ATOM-UART";   // ← 広告に出す名前
 
 BLECharacteristic* txChar = nullptr;
 bool deviceConnected = false;
@@ -44,16 +46,15 @@ static void handleCommand(String cmd) {
   String u = cmd;
   u.toUpperCase();
 
-  if (u == "RED")   { setLed(255, 0, 0);   sendTx("OK RED\n");   return; }
-  if (u == "GREEN") { setLed(0, 255, 0);   sendTx("OK GREEN\n"); return; }
-  if (u == "BLUE")  { setLed(0, 0, 255);   sendTx("OK BLUE\n");  return; }
-  if (u == "WHITE") { setLed(255, 255, 255); sendTx("OK WHITE\n"); return; }
-  if (u == "OFF")   { setLed(0, 0, 0);     sendTx("OK OFF\n");   return; }
+  if (u == "RED")   { setLed(255, 0, 0);       sendTx("OK RED\n");   return; }
+  if (u == "GREEN") { setLed(0, 255, 0);       sendTx("OK GREEN\n"); return; }
+  if (u == "BLUE")  { setLed(0, 0, 255);       sendTx("OK BLUE\n");  return; }
+  if (u == "WHITE") { setLed(255, 255, 255);  sendTx("OK WHITE\n");  return; }
+  if (u == "OFF")   { setLed(0, 0, 0);         sendTx("OK OFF\n");   return; }
 
   // RGB r g b
   if (u.startsWith("RGB")) {
     int r, g, b;
-    // "RGB 1 2 3" を想定
     if (sscanf(cmd.c_str(), "RGB %d %d %d", &r, &g, &b) == 3) {
       r = constrain(r, 0, 255);
       g = constrain(g, 0, 255);
@@ -86,7 +87,7 @@ class ServerCB : public BLEServerCallbacks {
 class RxCB : public BLECharacteristicCallbacks {
   String buf;
   void onWrite(BLECharacteristic* c) override {
-    String v = c->getValue();   // ← std::string ではなく String
+    String v = c->getValue();   // Arduino String
     if (v.length() == 0) return;
 
     for (size_t i = 0; i < (size_t)v.length(); i++) {
@@ -102,6 +103,27 @@ class RxCB : public BLECharacteristicCallbacks {
   }
 };
 
+static void setupAdvertisingWithName() {
+  BLEAdvertising* adv = BLEDevice::getAdvertising();
+
+  // 広告パケット（ADV）に「名前」と「Service UUID」を入れる
+  BLEAdvertisementData advData;
+  advData.setName(ADV_NAME);
+  advData.setCompleteServices(BLEUUID(NUS_SERVICE_UUID));
+
+  adv->setAdvertisementData(advData);
+
+  // Scan Response側にも名前を入れておく（機種/アプリ差の吸収用）
+  BLEAdvertisementData scanData;
+  scanData.setName(ADV_NAME);
+  adv->setScanResponseData(scanData);
+
+  // 追加でAPIを呼ぶならここ（任意）
+  // adv->addServiceUUID(NUS_SERVICE_UUID); // 上でsetCompleteServicesしているので基本不要
+
+  adv->start();
+}
+
 void setup() {
   Serial.begin(115200);
   delay(200);
@@ -109,7 +131,9 @@ void setup() {
   pixels.begin();
   setLed(0, 0, 0);
 
-  BLEDevice::init("ATOM-UART");
+  // GAP Device Name（内部設定）
+  BLEDevice::init(ADV_NAME);
+
   BLEServer* server = BLEDevice::createServer();
   server->setCallbacks(new ServerCB());
 
@@ -129,12 +153,11 @@ void setup() {
 
   service->start();
 
-  BLEAdvertising* adv = BLEDevice::getAdvertising();
-  adv->addServiceUUID(NUS_SERVICE_UUID);
-  adv->setScanResponse(true);
-  adv->start();
+  setupAdvertisingWithName();
 
-  Serial.println("Advertising as: ATOM-UART");
+  Serial.print("Advertising as: ");
+  Serial.println(ADV_NAME);
+
   setLed(0, 0, 20); // 起動表示（薄青）
 }
 
