@@ -59,7 +59,7 @@ public sealed class LedCommand : ICommandHandler
             return;
         }
 
-        var service = servicesResult.Services.FirstOrDefault(s => s.Uuid == ServiceUuid);
+        using var service = servicesResult.Services.FirstOrDefault(s => s.Uuid == ServiceUuid);
         if (service == null)
         {
             Console.WriteLine("UART service not found.");
