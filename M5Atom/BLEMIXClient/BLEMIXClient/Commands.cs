@@ -25,11 +25,13 @@ public sealed class ShellCommand : ICommandHandler
     private static readonly Guid RxCharUuid = Guid.Parse("6E400002-B5A3-F393-E0A9-E50E24DCCA9E"); // UART RX (Write)
     private static readonly Guid TxCharUuid = Guid.Parse("6E400003-B5A3-F393-E0A9-E50E24DCCA9E"); // UART TX (Notify)
 
+    private static readonly SemaphoreSlim NotificationSemaphore = new(0);
     private static BluetoothLEDevice? device;
     private static GattDeviceService? service;
     private static GattCharacteristic? rxChar;
     private static GattCharacteristic? txChar;
     private static string lastNotifyData = "";
+    private static bool waitingForResponse;
 
     [Option<string>("--address", "-a", Description = "Address", Required = true)]
     public string Address { get; set; } = default!;
@@ -184,8 +186,21 @@ public sealed class ShellCommand : ICommandHandler
         var bytes = new byte[reader.UnconsumedBufferLength];
         reader.ReadBytes(bytes);
         lastNotifyData = Encoding.ASCII.GetString(bytes);
-        Console.WriteLine($"\n[Notification] {lastNotifyData.TrimEnd()}");
-        Console.Write("Select> ");
+
+        // 応答待ちの場合はセマフォを解放するだけ（表示は呼び出し元で行う）
+        if (waitingForResponse)
+        {
+            if (NotificationSemaphore.CurrentCount == 0)
+            {
+                NotificationSemaphore.Release();
+            }
+        }
+        else
+        {
+            // 非同期通知の場合のみここで表示
+            Console.WriteLine($"\n[Notification] {lastNotifyData.TrimEnd()}");
+            Console.Write("Select> ");
+        }
     }
 
     private static async Task DisconnectAsync()
@@ -217,6 +232,7 @@ public sealed class ShellCommand : ICommandHandler
 
         await Task.CompletedTask;
     }
+
     private static async Task EnsureConnectedAsync()
     {
         if (device == null || rxChar == null)
@@ -300,20 +316,38 @@ public sealed class ShellCommand : ICommandHandler
 
     private static async Task GetTemperatureAsync()
     {
+        await EnsureConnectedAsync();
+
+        // セマフォをリセット
+        while (NotificationSemaphore.CurrentCount > 0)
+        {
+            await NotificationSemaphore.WaitAsync(0);
+        }
+
         lastNotifyData = "";
+        waitingForResponse = true;
+
         await SendCommandAsync("TEMP");
 
-        // Wait for notification (simple approach)
         Console.WriteLine("Waiting for response...");
-        await Task.Delay(1000);
 
-        if (!string.IsNullOrEmpty(lastNotifyData))
+        // 最大5秒待つ
+        var timeoutTask = Task.Delay(5000);
+        var notificationTask = NotificationSemaphore.WaitAsync();
+
+        var completedTask = await Task.WhenAny(notificationTask, timeoutTask);
+
+        waitingForResponse = false;
+
+        if (completedTask == notificationTask)
         {
+            // Notificationを受信した
             Console.WriteLine($"Result: {lastNotifyData.TrimEnd()}");
         }
         else
         {
-            Console.WriteLine("No response received. Check connection.");
+            // タイムアウト
+            Console.WriteLine("Timeout: No response received. Check connection.");
         }
     }
 }
