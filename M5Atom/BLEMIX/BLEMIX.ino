@@ -120,21 +120,34 @@ static String makeMfgString(int16_t temp_c_x100, uint16_t humi_x100) {
 }
 
 static void updateAdvertising(int16_t t_x100, uint16_t h_x100) {
+  BLEAdvertising* adv = BLEDevice::getAdvertising();
+  adv->stop();
+  
+  // ★Linux対応：Flagsを明示的に設定
   BLEAdvertisementData advData;
+  advData.setFlags(0x06);  // LE General Discoverable Mode + BR/EDR Not Supported
   advData.setName(ADV_NAME);
   advData.setCompleteServices(BLEUUID(NUS_SERVICE_UUID));
   advData.setManufacturerData(makeMfgString(t_x100, h_x100));
   
-  BLEAdvertising* adv = BLEDevice::getAdvertising();
-  adv->stop();
-  adv->setAdvertisementData(advData);
-  
   // Scan Response側にも名前を入れておく
   BLEAdvertisementData scanData;
   scanData.setName(ADV_NAME);
+  
+  adv->setAdvertisementData(advData);
   adv->setScanResponseData(scanData);
   
+  // ★Linux対応：アドバタイズ間隔を短く設定
+  // 単位: 0.625ms, 0x0020 = 20ms, 0x0040 = 40ms
+  adv->setMinInterval(0x0020);  // 20ms
+  adv->setMaxInterval(0x0040);  // 40ms
+  
+  // ★Linux対応：アドバタイズタイプを明示
+  adv->setAdvertisementType(ADV_TYPE_IND);  // Connectable undirected
+  
   adv->start();
+  
+  Serial.println("Advertising updated (Linux-compatible mode)");
 }
 
 // ---- コマンド処理 ----
@@ -169,13 +182,18 @@ static void handleCommand(String cmd) {
   
   // 温度取得コマンド
   if (u == "TEMP") {
+    Serial.println("TEMP command received");
     float t, h;
     if (readSHT3X(t, h)) {
       lastTemp = t;
       lastHumi = h;
       char buf[64];
       snprintf(buf, sizeof(buf), "TEMP %.2f HUMI %.2f\n", t, h);
+      Serial.printf("Sending: %s", buf);
       sendTx(buf);
+    } else {
+      Serial.println("Failed to read sensor");
+      sendTx("ERR Failed to read sensor\n");
     }
     return;
   }
@@ -238,6 +256,11 @@ void setup() {
   
   // BLE初期化
   BLEDevice::init(ADV_NAME);
+  
+  // ★Linux対応：BLE送信パワーを最大に設定
+  esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_ADV, ESP_PWR_LVL_P9);
+  esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_DEFAULT, ESP_PWR_LVL_P9);
+  
   BLEServer* server = BLEDevice::createServer();
   server->setCallbacks(new ServerCB());
   
@@ -263,6 +286,10 @@ void setup() {
   
   Serial.print("Advertising as: ");
   Serial.println(ADV_NAME);
+  Serial.println("Linux-compatible BLE settings applied:");
+  Serial.println("  - Flags: 0x06 (LE General Discoverable)");
+  Serial.println("  - Interval: 20-40ms");
+  Serial.println("  - TX Power: Maximum");
   
   setLed(0, 0, 20); // 起動表示（薄青）
 }
@@ -281,7 +308,7 @@ void loop() {
       lastHumi = h;
       int16_t t_x100 = (int16_t)lroundf(t * 100.0f);
       uint16_t h_x100 = (uint16_t)lroundf(h * 100.0f);
-      Serial.printf("T=%.2fC H=%.2f%% -> t_x100=%d h_x100=%u\n", t, h, t_x100, h_x100);
+      //Serial.printf("T=%.2fC H=%.2f%% -> t_x100=%d h_x100=%u\n", t, h, t_x100, h_x100);
       updateAdvertising(t_x100, h_x100);
     } else {
       Serial.println("SHT read failed (skip adv update)");
