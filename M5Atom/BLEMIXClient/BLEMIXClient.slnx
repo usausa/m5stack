@@ -1,3 +1,6 @@
 <Solution>
   <Project Path="BLEMIXClient/BLEMIXClient.csproj" />
+  <Folder Name="/Solution Items/">
+    <File Path="../../AGENTS.md" />
+  </Folder>
 </Solution>
